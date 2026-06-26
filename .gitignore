@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+mi_dibujo.png
+.venv/
+venv/
+.env
