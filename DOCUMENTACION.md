@@ -486,14 +486,61 @@ python HandTrackingModule.py
 
 ## 9. Modificaciones respecto al código base de la práctica
 
-| Modificación | Archivo | Descripción |
-|--------------|---------|-------------|
-| Grosor dinámico | `VirtualPainter.py` | El trazo es más grueso si mueves lento y más fino si mueves rápido |
-| Cooldown de selección | `VirtualPainter.py` | Evita cambiar de color repetidamente al pasar por el menú |
-| Pinza para mover | `VirtualPainter.py` + `HandTrackingModule.py` | Mueve figuras individuales o todo el lienzo con `np.roll` |
-| Borrador grande | `VirtualPainter.py` | Borrador 8× más grueso que el pincel |
-| Corrección geométrica | `VirtualPainter.py` | Figuras cerradas se reconocen y corrigen automáticamente |
-| HUD informativo | `VirtualPainter.py` | Muestra herramienta activa, gestos y mensajes de estado |
+Comparación contra el Virtual Painter original del tutorial (Murtaza Hassan): menú con `if/elif` inline, grosor fijo, sin pinza, sin figuras geométricas, sin HUD y sin guardado automático.
+
+### 9.1 `HandTrackingModule.py`
+
+| # | Modificación | Descripción |
+|---|--------------|-------------|
+| 1 | Inicialización en `__init__` | Se añadieron `self.results = None` y `self.lmList = []` para evitar errores antes de la primera detección |
+| 2 | Simplificación de `findHands()` | El dibujo de landmarks usa `mpDraw.draw_landmarks()` en lugar de círculos manuales por cada punto |
+| 3 | Eliminación de `import numpy` | NumPy no se usa en este módulo; se eliminó la dependencia innecesaria |
+| 4 | Nuevo método `detectPinch()` | Calcula la distancia entre pulgar (landmark 4) e índice (landmark 8); si es menor a 40 px, la pinza está activa y devuelve su centro |
+| 5 | Nuevo método `fingersUpFromLmList()` | Igual que `fingersUp()`, pero recibe una lista de landmarks como parámetro (útil para varias manos) |
+| 6 | Nuevo método `findAllHandPositions()` | Extrae landmarks, bbox y estado de dedos de todas las manos detectadas |
+| 7 | Nuevo método `_extractLandmarks()` | Método auxiliar interno que obtiene los 21 puntos de una mano; evita duplicar código entre `findPosition()` y `findAllHandPositions()` |
+
+### 9.2 `VirtualPainter.py`
+
+| # | Modificación | Descripción |
+|---|--------------|-------------|
+| 1 | Cambio de colores del menú | `brushColors` pasa de los colores del tutorial a azul, rojo, verde y negro (borrador), alineados al diseño de Canva |
+| 2 | Ajuste de zonas X del menú | `menuZones` recalibradas para el header de Canva: `(200,420)`, `(420,620)`, `(620,820)`, `(820,1100)` |
+| 3 | Cambio de grosor de pincel y borrador | Pincel a 15 px; borrador a 8× el pincel (120 px), frente a los 25/100 px del tutorial |
+| 4 | Grosor dinámico según velocidad | `getDynamicThickness()` hace el trazo más grueso al mover lento y más fino al mover rápido (rango 3–20 px) |
+| 5 | Cooldown de selección de herramienta | `selectionCooldown = 0.8` s evita cambiar de color repetidamente al pasar el dedo por el menú |
+| 6 | Espejo horizontal de la cámara | Constante `cameraFlipCode = 1` para que el movimiento de la mano coincida con lo que se ve en pantalla |
+| 7 | Mayor confianza de detección | `detectionCon=0.65` al crear el detector (el tutorial usa 0.5) para reducir falsos positivos |
+| 8 | Refactorización modular | La lógica del tutorial inline se separó en funciones: `selectTool()`, `mergeCanvasWithCamera()`, `overlayHeader()`, `saveDrawing()`, etc. |
+| 9 | Clase `Shape` y lista `shapes[]` | Las figuras corregidas se almacenan aparte del lienzo de trazos libres (`imgCanvas`) |
+| 10 | Reconocimiento de figuras geométricas | Al soltar el dedo tras dibujar un trazo cerrado, `recognizeStroke()` detecta círculo, rectángulo, cuadrado o corazón |
+| 11 | Corrección geométrica automática | `finalizeStroke()` borra el trazo irregular y lo reemplaza por la figura perfecta con `drawShape()` |
+| 12 | Etiqueta con nombre en figuras | Cada figura corregida muestra su nombre encima (p. ej. `Circulo`, `Cuadrado`, `Corazon`) |
+| 13 | Pinza para mover figuras | Con pinza sobre una figura, `findShapeAt()` + `Shape.move()` la desplaza individualmente |
+| 14 | Pinza para mover todo el lienzo | Con pinza en zona vacía, `np.roll()` desplaza el canvas completo y todas las figuras a la vez |
+| 15 | Borrador elimina figuras | `eraseShapesWithStroke()` quita figuras geométricas que intersectan el trazo del borrador, no solo trazos libres |
+| 16 | Limpieza con 5 dedos | Al levantar los 5 dedos se borran trazos (`imgCanvas[:] = 0`) y figuras (`shapes = []`) |
+| 17 | HUD visual en pantalla | `drawHud()` muestra color activo, nombre de herramienta y guía de gestos en la parte inferior |
+| 18 | Mensajes de estado temporales | Textos como `CIRCULO CORREGIDO`, `LIENZO LIMPIO` o `MOVIENDO...` que desaparecen tras unos segundos |
+| 19 | Guardado automático al salir | `saveDrawing()` genera `mi_dibujo.png` con trazos y figuras al presionar `Q` |
+
+### 9.3 Otros archivos del proyecto
+
+| # | Modificación | Descripción |
+|---|--------------|-------------|
+| 1 | `crear_header_temporal.py` | Script auxiliar que genera imágenes de prueba para `Header/` mientras el equipo de diseño entrega los JPG finales de Canva |
+| 2 | Carpeta `Header/` con 4 estados | Cada JPG representa qué herramienta aparece seleccionada en el menú (azul, rojo, verde, borrador) |
+
+### 9.4 Resumen por categoría
+
+| Categoría | Cambios principales |
+|-----------|---------------------|
+| **Detección de manos** | Pinza, soporte multi-mano, inicialización más robusta |
+| **Menú y herramientas** | Colores, zonas X, cooldown, borrador más grande |
+| **Dibujo** | Grosor dinámico, espejo de cámara, mayor confianza de detección |
+| **Figuras** | Reconocimiento, corrección, nombre visible, movimiento y borrado |
+| **Interfaz** | HUD, mensajes de estado, guardado automático |
+| **Arquitectura** | Código modular en funciones y clase `Shape` separada del lienzo |
 
 ---
 
