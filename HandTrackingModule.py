@@ -1,3 +1,4 @@
+# Detección de manos con MediaPipe: landmarks, dedos y gesto de pinza.
 import cv2
 import mediapipe as mp
 import time
@@ -5,6 +6,7 @@ import math
 
 
 class handDetector:
+  # tipIds: punta de pulgar, índice, medio, anular y meñique.
   def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
     self.mode = mode
     self.maxHands = maxHands
@@ -70,12 +72,14 @@ class handDetector:
 
     return self.lmList, bbox
 
+  # Devuelve [pulgar, índice, medio, anular, meñique]; 1 = levantado.
   def fingersUp(self):
     fingers = []
 
     if not self.lmList:
       return fingers
 
+    # El pulgar se compara en X; el resto de dedos en Y (eje vertical).
     if self.lmList[self.tipIds[0]][1] > self.lmList[self.tipIds[0] - 1][1]:
       fingers.append(1)
     else:
@@ -103,6 +107,7 @@ class handDetector:
     length = math.hypot(x2 - x1, y2 - y1)
     return length, img, [x1, y1, x2, y2, cx, cy]
 
+  # True si pulgar e índice están lo bastante cerca (gesto de pinza).
   def detectPinch(self, threshold=40):
     if len(self.lmList) < 9:
       return False, 0, 0

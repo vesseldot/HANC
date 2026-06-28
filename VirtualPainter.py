@@ -1,3 +1,4 @@
+# Pizarrón virtual con cámara: dibuja con el dedo y corrige figuras cerradas.
 import math
 import os
 import sys
@@ -8,6 +9,7 @@ import numpy as np
 
 import HandTrackingModule as htm
 
+# Parámetros de pincel, menú y reconocimiento de formas.
 brushThickness = 15
 eraserThickness = brushThickness * 8
 headerHeight = 125
@@ -42,6 +44,7 @@ menuZones = [
 cameraFlipCode = 1
 
 
+# Figura geométrica reconocida; se puede mover y borrar como un objeto.
 class Shape:
   def __init__(self, shapeType, name, x1, y1, x2, y2, color, thickness=3):
     self.shapeType = shapeType
@@ -56,6 +59,7 @@ class Shape:
     self.x2 = max(x1, x2)
     self.y2 = max(y1, y2)
 
+    # Fuerza lados iguales centrando el cuadrado en el trazo del usuario.
     if self.shapeType == 'cuadrado':
       size = min(self.x2 - self.x1, self.y2 - self.y1)
       centerX = (self.x1 + self.x2) // 2
@@ -129,6 +133,7 @@ def selectTool(x, y, overlayList):
   return None, None, None
 
 
+# Grosor inverso a la velocidad del dedo: más lento = trazo más grueso.
 def getDynamicThickness(x1, y1, x2, y2):
   speed = math.hypot(x2 - x1, y2 - y1)
   ratio = min(speed / maxSpeed, 1.0)
@@ -141,6 +146,7 @@ def strokeBounds(points):
   return min(xs), min(ys), max(xs), max(ys)
 
 
+# Comprueba si el trazo vuelve cerca del punto inicial (figura cerrada).
 def isClosedStroke(points, x1, y1, x2, y2):
   width = max(x2 - x1, 1)
   height = max(y2 - y1, 1)
@@ -153,6 +159,7 @@ def contourFromStroke(points):
   return array
 
 
+# 1.0 = círculo perfecto; valores bajos indican formas irregulares.
 def circularityScore(contour):
   area = cv2.contourArea(contour)
   perimeter = cv2.arcLength(contour, True)
@@ -186,6 +193,7 @@ def looksLikeHeart(points, x1, y1, x2, y2):
   return len(leftLobe) >= 4 and len(rightLobe) >= 4 and len(bottomTip) >= 3
 
 
+# Clasifica un trazo cerrado en cuadrado, rectángulo, círculo o corazón.
 def recognizeStroke(points, color, thickness):
   if len(points) < minStrokePoints:
     return None
@@ -219,6 +227,7 @@ def recognizeStroke(points, color, thickness):
   return None
 
 
+# Pinta en negro sobre el lienzo para quitar el trazo libre antes de la figura.
 def eraseStrokeFromCanvas(imgCanvas, points, thickness):
   for index in range(1, len(points)):
     cv2.line(
@@ -230,6 +239,7 @@ def eraseStrokeFromCanvas(imgCanvas, points, thickness):
     )
 
 
+# Curva paramétrica clásica del corazón, escalada al tamaño detectado.
 def heartPoints(centerX, centerY, size):
   points = []
   for angle in np.linspace(0, 2 * math.pi, 80):
@@ -313,6 +323,7 @@ def finalizeStroke(imgCanvas, shapes, currentStroke, strokeThickness, drawColor)
   return shapes, f'{recognized.name.upper()} CORREGIDO'
 
 
+# Superpone el dibujo sobre el video: negro del lienzo = transparente.
 def mergeCanvasWithCamera(img, imgCanvas):
   imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
   _, imgInv = cv2.threshold(imgGray, 50, 255, cv2.THRESH_BINARY_INV)
@@ -385,6 +396,7 @@ def saveDrawing(imgCanvas, shapes):
 
 
 def main():
+  # Bucle principal: gestos de mano → dibujo, borrado, mover figuras o lienzo.
   folderPath = 'Header'
   overlayList = loadHeaderImages(folderPath)
 
@@ -433,6 +445,7 @@ def main():
       x1, y1 = lmList[8][1], lmList[8][2]
       fingers = detector.fingersUp()
 
+      # Índice + medio: seleccionar herramienta en la barra superior.
       if fingers[1] == 1 and fingers[2] == 1:
         xp, yp = 0, 0
         pinchPrevX, pinchPrevY = 0, 0
@@ -446,6 +459,7 @@ def main():
             toolIndex = selectedIndex
             lastToolChange = now
 
+      # Solo índice: dibujar o borrar según el color activo.
       elif fingers[1] == 1 and fingers[2] == 0:
         cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
         pinchPrevX, pinchPrevY = 0, 0
@@ -466,6 +480,7 @@ def main():
         cv2.line(imgCanvas, (xp, yp), (x1, y1), drawColor, strokeThickness)
         xp, yp = x1, y1
 
+      # Los cinco dedos levantados limpian todo el lienzo.
       elif all(fingers):
         imgCanvas[:] = 0
         shapes = []
@@ -479,6 +494,7 @@ def main():
         xp, yp = 0, 0
         isPinch, pinchX, pinchY = detector.detectPinch(pinchThreshold)
 
+        # Pinza: mover una figura o desplazar el lienzo completo.
         if isPinch and pinchY >= headerHeight:
           selectedShape = findShapeAt(shapes, pinchX, pinchY)
 
@@ -508,6 +524,7 @@ def main():
         else:
           pinchPrevX, pinchPrevY = 0, 0
 
+    # Al soltar el dedo, intentar convertir el trazo en figura geométrica.
     if wasDrawing and not isDrawing and drawColor != (0, 0, 0):
       shapes, message = finalizeStroke(
         imgCanvas,
