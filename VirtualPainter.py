@@ -20,7 +20,9 @@ minThickness = 3
 maxThickness = 20
 maxSpeed = 60
 selectionCooldown = 0.8
+clearCooldown = 1.0
 pinchThreshold = 40
+pinchReleaseThreshold = 55
 shapeMinSize = 50
 shapeHitPadding = 25
 minStrokePoints = 20
@@ -120,6 +122,10 @@ def loadHeaderImages(folderPath):
     overlayList.append(image)
 
   return overlayList
+
+
+def isOpenHand(fingers):
+  return len(fingers) == 5 and all(fingers)
 
 
 def selectTool(x, y, overlayList):
@@ -413,6 +419,7 @@ def main():
   xp, yp = 0, 0
   pinchPrevX, pinchPrevY = 0, 0
   lastToolChange = 0.0
+  lastClear = 0.0
   statusText = ''
   statusUntil = 0.0
   shapes = []
@@ -445,8 +452,21 @@ def main():
       x1, y1 = lmList[8][1], lmList[8][2]
       fingers = detector.fingersUp()
 
+      # Mano abierta (5 dedos): limpiar todo; va primero para no confundirse con índice+medio.
+      if isOpenHand(fingers):
+        xp, yp = 0, 0
+        pinchPrevX, pinchPrevY = 0, 0
+        now = time.time()
+        if now - lastClear > clearCooldown:
+          imgCanvas[:] = 0
+          shapes = []
+          currentStroke = []
+          lastClear = now
+          statusText = 'LIENZO LIMPIO'
+          statusUntil = now + 1.5
+
       # Índice + medio: seleccionar herramienta en la barra superior.
-      if fingers[1] == 1 and fingers[2] == 1:
+      elif fingers[1] == 1 and fingers[2] == 1:
         xp, yp = 0, 0
         pinchPrevX, pinchPrevY = 0, 0
         selectedHeader, selectedColor, selectedIndex = selectTool(x1, y1, overlayList)
@@ -480,19 +500,12 @@ def main():
         cv2.line(imgCanvas, (xp, yp), (x1, y1), drawColor, strokeThickness)
         xp, yp = x1, y1
 
-      # Los cinco dedos levantados limpian todo el lienzo.
-      elif all(fingers):
-        imgCanvas[:] = 0
-        shapes = []
-        currentStroke = []
-        xp, yp = 0, 0
-        pinchPrevX, pinchPrevY = 0, 0
-        statusText = 'LIENZO LIMPIO'
-        statusUntil = time.time() + 1.5
-
       else:
         xp, yp = 0, 0
-        isPinch, pinchX, pinchY = detector.detectPinch(pinchThreshold)
+        isPinch, pinchX, pinchY = detector.detectPinch(
+          pinchThreshold,
+          releaseThreshold=pinchReleaseThreshold,
+        )
 
         # Pinza: mover una figura o desplazar el lienzo completo.
         if isPinch and pinchY >= headerHeight:

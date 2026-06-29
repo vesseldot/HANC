@@ -24,6 +24,9 @@ class handDetector:
     self.tipIds = [4, 8, 12, 16, 20]
     self.results = None
     self.lmList = []
+    self.pinchActive = False
+    self.pinchSmoothX = 0
+    self.pinchSmoothY = 0
 
   def findHands(self, img, draw=True):
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -107,18 +110,50 @@ class handDetector:
     length = math.hypot(x2 - x1, y2 - y1)
     return length, img, [x1, y1, x2, y2, cx, cy]
 
-  # True si pulgar e índice están lo bastante cerca (gesto de pinza).
-  def detectPinch(self, threshold=40):
-    if len(self.lmList) < 9:
+  # Pinza: umbral adaptado al tamaño de la mano, histéresis y dedos centrales plegados.
+  def detectPinch(self, threshold=40, releaseThreshold=55):
+    if len(self.lmList) < 21:
       return False, 0, 0
 
     thumbX, thumbY = self.lmList[4][1], self.lmList[4][2]
     indexX, indexY = self.lmList[8][1], self.lmList[8][2]
+    wristX, wristY = self.lmList[0][1], self.lmList[0][2]
+    middleMcpX, middleMcpY = self.lmList[9][1], self.lmList[9][2]
+
+    handSize = max(math.hypot(middleMcpX - wristX, middleMcpY - wristY), 1)
+    scale = handSize / 80
+    enterDistance = threshold * scale
+    exitDistance = releaseThreshold * scale
+
     distance = math.hypot(indexX - thumbX, indexY - thumbY)
     centerX = (thumbX + indexX) // 2
     centerY = (thumbY + indexY) // 2
 
-    return distance < threshold, centerX, centerY
+    fingers = self.fingersUp()
+    pinchPose = (
+      len(fingers) == 5
+      and fingers[2] == 0
+      and fingers[3] == 0
+      and fingers[4] == 0
+    )
+
+    if self.pinchActive:
+      if distance < exitDistance and pinchPose:
+        self.pinchActive = True
+      else:
+        self.pinchActive = False
+    elif distance < enterDistance and pinchPose:
+      self.pinchActive = True
+
+    if not self.pinchActive:
+      self.pinchSmoothX = centerX
+      self.pinchSmoothY = centerY
+      return False, 0, 0
+
+    smooth = 0.45
+    self.pinchSmoothX = int(smooth * centerX + (1 - smooth) * self.pinchSmoothX)
+    self.pinchSmoothY = int(smooth * centerY + (1 - smooth) * self.pinchSmoothY)
+    return True, self.pinchSmoothX, self.pinchSmoothY
 
   def findAllHandPositions(self, img, draw=False):
     handsData = []
