@@ -110,13 +110,14 @@ class handDetector:
     length = math.hypot(x2 - x1, y2 - y1)
     return length, img, [x1, y1, x2, y2, cx, cy]
 
-  # Pinza: umbral adaptado al tamaño de la mano, histéresis y dedos centrales plegados.
-  def detectPinch(self, threshold=40, releaseThreshold=55):
+  # Pinza con pulgar, índice y medio: umbral adaptado, histéresis y suavizado.
+  def detectPinch(self, threshold=45, releaseThreshold=62):
     if len(self.lmList) < 21:
       return False, 0, 0
 
     thumbX, thumbY = self.lmList[4][1], self.lmList[4][2]
     indexX, indexY = self.lmList[8][1], self.lmList[8][2]
+    middleX, middleY = self.lmList[12][1], self.lmList[12][2]
     wristX, wristY = self.lmList[0][1], self.lmList[0][2]
     middleMcpX, middleMcpY = self.lmList[9][1], self.lmList[9][2]
 
@@ -125,24 +126,29 @@ class handDetector:
     enterDistance = threshold * scale
     exitDistance = releaseThreshold * scale
 
-    distance = math.hypot(indexX - thumbX, indexY - thumbY)
-    centerX = (thumbX + indexX) // 2
-    centerY = (thumbY + indexY) // 2
+    distThumbIndex = math.hypot(indexX - thumbX, indexY - thumbY)
+    distThumbMiddle = math.hypot(middleX - thumbX, middleY - thumbY)
+    distIndexMiddle = math.hypot(middleX - indexX, middleY - indexY)
+    spread = max(distThumbIndex, distThumbMiddle, distIndexMiddle)
+
+    centerX = (thumbX + indexX + middleX) // 3
+    centerY = (thumbY + indexY + middleY) // 3
 
     fingers = self.fingersUp()
     pinchPose = (
       len(fingers) == 5
-      and fingers[2] == 0
+      and fingers[1] == 1
+      and fingers[2] == 1
       and fingers[3] == 0
       and fingers[4] == 0
     )
 
     if self.pinchActive:
-      if distance < exitDistance and pinchPose:
+      if spread < exitDistance and pinchPose:
         self.pinchActive = True
       else:
         self.pinchActive = False
-    elif distance < enterDistance and pinchPose:
+    elif spread < enterDistance and pinchPose:
       self.pinchActive = True
 
     if not self.pinchActive:
@@ -150,7 +156,7 @@ class handDetector:
       self.pinchSmoothY = centerY
       return False, 0, 0
 
-    smooth = 0.45
+    smooth = 0.5
     self.pinchSmoothX = int(smooth * centerX + (1 - smooth) * self.pinchSmoothX)
     self.pinchSmoothY = int(smooth * centerY + (1 - smooth) * self.pinchSmoothY)
     return True, self.pinchSmoothX, self.pinchSmoothY

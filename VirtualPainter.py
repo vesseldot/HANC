@@ -20,9 +20,10 @@ minThickness = 3
 maxThickness = 20
 maxSpeed = 60
 selectionCooldown = 0.8
-clearCooldown = 1.0
-pinchThreshold = 40
-pinchReleaseThreshold = 55
+clearCooldown = 0.35
+openHandFramesNeeded = 2
+pinchThreshold = 45
+pinchReleaseThreshold = 62
 shapeMinSize = 50
 shapeHitPadding = 25
 minStrokePoints = 20
@@ -125,7 +126,10 @@ def loadHeaderImages(folderPath):
 
 
 def isOpenHand(fingers):
-  return len(fingers) == 5 and all(fingers)
+  if len(fingers) != 5:
+    return False
+  # El pulgar falla a menudo en cámara espejada; basta con los otros cuatro levantados.
+  return fingers[1] == 1 and fingers[2] == 1 and fingers[3] == 1 and fingers[4] == 1
 
 
 def selectTool(x, y, overlayList):
@@ -366,7 +370,7 @@ def drawHud(img, color, toolName, statusText):
   gestures = [
     'Indice+medio = Seleccionar herramienta',
     'Solo indice = Dibujar (figuras cerradas se corrigen)',
-    'Pinza sobre figura = Mover | Pinza vacia = Mover lienzo',
+    'Pinza (pulgar+indice+medio) = Mover figura o lienzo',
     'Borrador = Borrar trazos y figuras',
     '5 dedos = Limpiar todo',
   ]
@@ -420,6 +424,7 @@ def main():
   pinchPrevX, pinchPrevY = 0, 0
   lastToolChange = 0.0
   lastClear = 0.0
+  openHandFrames = 0
   statusText = ''
   statusUntil = 0.0
   shapes = []
@@ -451,13 +456,16 @@ def main():
     if len(lmList) != 0:
       x1, y1 = lmList[8][1], lmList[8][2]
       fingers = detector.fingersUp()
-
-      # Mano abierta (5 dedos): limpiar todo; va primero para no confundirse con índice+medio.
+      # Mano abierta (5 dedos): limpiar tras unas pocas frames para respuesta rápida.
       if isOpenHand(fingers):
+        openHandFrames += 1
         xp, yp = 0, 0
         pinchPrevX, pinchPrevY = 0, 0
         now = time.time()
-        if now - lastClear > clearCooldown:
+        if (
+          openHandFrames >= openHandFramesNeeded
+          and now - lastClear > clearCooldown
+        ):
           imgCanvas[:] = 0
           shapes = []
           currentStroke = []
@@ -467,6 +475,7 @@ def main():
 
       # Índice + medio: seleccionar herramienta en la barra superior.
       elif fingers[1] == 1 and fingers[2] == 1:
+        openHandFrames = 0
         xp, yp = 0, 0
         pinchPrevX, pinchPrevY = 0, 0
         selectedHeader, selectedColor, selectedIndex = selectTool(x1, y1, overlayList)
@@ -481,6 +490,7 @@ def main():
 
       # Solo índice: dibujar o borrar según el color activo.
       elif fingers[1] == 1 and fingers[2] == 0:
+        openHandFrames = 0
         cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
         pinchPrevX, pinchPrevY = 0, 0
         isDrawing = True
@@ -501,13 +511,14 @@ def main():
         xp, yp = x1, y1
 
       else:
+        openHandFrames = 0
         xp, yp = 0, 0
         isPinch, pinchX, pinchY = detector.detectPinch(
           pinchThreshold,
           releaseThreshold=pinchReleaseThreshold,
         )
 
-        # Pinza: mover una figura o desplazar el lienzo completo.
+        # Pinza de tres dedos: mover una figura o desplazar el lienzo completo.
         if isPinch and pinchY >= headerHeight:
           selectedShape = findShapeAt(shapes, pinchX, pinchY)
 
@@ -536,6 +547,9 @@ def main():
               pinchPrevX, pinchPrevY = pinchX, pinchY
         else:
           pinchPrevX, pinchPrevY = 0, 0
+
+    else:
+      openHandFrames = 0
 
     # Al soltar el dedo, intentar convertir el trazo en figura geométrica.
     if wasDrawing and not isDrawing and drawColor != (0, 0, 0):
